@@ -7,10 +7,15 @@ package sqltocsv
 import (
 	"bytes"
 	"database/sql"
+	"encoding/base64"
 	"encoding/csv"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -41,15 +46,43 @@ func Write(writer io.Writer, rows *sql.Rows) error {
 // return the processed Row slice as you want it written to the CSV.
 type CsvPreProcessorFunc func(row []string, columnNames []string) (outputRow bool, processedRow []string)
 
+type ByteArrayConverter int
+
+const (
+	// string([]byte)
+	String = iota
+
+	// StdEncoding is the standard base64 encoding, as defined in RFC 4648.
+	StdBase64
+
+	// URLEncoding is the alternate base64 encoding defined in RFC 4648.
+	// It is typically used in URLs and file names.
+	URLBase64
+
+	// RawStdEncoding is the standard raw, unpadded base64 encoding,
+	// as defined in RFC 4648 section 3.2.
+	// This is the same as [StdEncoding] but omits padding characters.
+	RawStdBase64
+
+	// RawURLEncoding is the unpadded alternate base64 encoding defined in RFC 4648.
+	// It is typically used in URLs and file names.
+	// This is the same as [URLEncoding] but omits padding characters.
+	RawURLBase64
+
+	// Hexadecimal encoding of src
+	Hex
+)
+
 // Converter does the actual work of converting the rows to CSV.
 // There are a few settings you can override if you want to do
 // some fancy stuff to your CSV.
 type Converter struct {
-	Headers      []string // Column headers to use (default is rows.Columns())
-	WriteHeaders bool     // Flag to output headers in your CSV (default is true)
-	TimeFormat   string   // Format string for any time.Time values (default is time's default)
-	FloatFormat  string   // Format string for any float64 and float32 values (default is %v)
-	Delimiter    rune     // Delimiter to use in your CSV (default is comma)
+	Headers            []string           // Column headers to use (default is rows.Columns())
+	WriteHeaders       bool               // Flag to output headers in your CSV (default is true)
+	TimeFormat         string             // Format string for any time.Time values (default is time's default)
+	FloatFormat        string             // Format string for any float64 and float32 values (default is %v)
+	Delimiter          rune               // Delimiter to use in your CSV (default is comma)
+	ByteArrayConverter ByteArrayConverter // How to convert []byte. By default string([]byte{})
 
 	rows            *sql.Rows
 	rowPreProcessor CsvPreProcessorFunc
@@ -121,13 +154,13 @@ func (c Converter) Write(writer io.Writer) error {
 	}
 
 	count := len(columnNames)
-	values := make([]interface{}, count)
-	valuePtrs := make([]interface{}, count)
+	values := make([]any, count)
+	valuePtrs := make([]any, count)
 
 	for rows.Next() {
 		row := make([]string, count)
 
-		for i, _ := range columnNames {
+		for i := range columnNames {
 			valuePtrs[i] = &values[i]
 		}
 
@@ -135,37 +168,8 @@ func (c Converter) Write(writer io.Writer) error {
 			return err
 		}
 
-		for i, _ := range columnNames {
-			var value interface{}
-			rawValue := values[i]
-
-			byteArray, ok := rawValue.([]byte)
-			if ok {
-				value = string(byteArray)
-			} else {
-				value = rawValue
-			}
-
-			float64Value, ok := value.(float64)
-			if ok && c.FloatFormat != "" {
-				value = fmt.Sprintf(c.FloatFormat, float64Value)
-			} else {
-				float32Value, ok := value.(float32)
-				if ok && c.FloatFormat != "" {
-					value = fmt.Sprintf(c.FloatFormat, float32Value)
-				}
-			}
-
-			timeValue, ok := value.(time.Time)
-			if ok && c.TimeFormat != "" {
-				value = timeValue.Format(c.TimeFormat)
-			}
-
-			if value == nil {
-				row[i] = ""
-			} else {
-				row[i] = fmt.Sprintf("%v", value)
-			}
+		for i := range columnNames {
+			row[i] = c.toString(values[i])
 		}
 
 		writeRow := true
@@ -195,4 +199,80 @@ func New(rows *sql.Rows) *Converter {
 		WriteHeaders: true,
 		Delimiter:    ',',
 	}
+}
+
+// toString converts any value to string.
+func (c Converter) toString(v any) string {
+	if v == nil {
+		return ""
+	}
+	switch val := v.(type) {
+	case string:
+		return val
+	case []byte:
+		switch c.ByteArrayConverter {
+		case String:
+			return string(val)
+		case StdBase64:
+			return base64.StdEncoding.EncodeToString(val)
+		case URLBase64:
+			return base64.URLEncoding.EncodeToString(val)
+		case RawStdBase64:
+			return base64.RawStdEncoding.EncodeToString(val)
+		case RawURLBase64:
+			return base64.RawURLEncoding.EncodeToString(val)
+		case Hex:
+			return hex.EncodeToString(val)
+		}
+		return string(val)
+	case bool:
+		return strconv.FormatBool(val)
+	case int:
+		return strconv.Itoa(val)
+	case int8:
+		return strconv.FormatInt(int64(val), 10)
+	case int16:
+		return strconv.FormatInt(int64(val), 10)
+	case int32:
+		return strconv.FormatInt(int64(val), 10)
+	case int64:
+		return strconv.FormatInt(val, 10)
+	case uint:
+		return strconv.FormatUint(uint64(val), 10)
+	case uint8:
+		return strconv.FormatUint(uint64(val), 10)
+	case uint16:
+		return strconv.FormatUint(uint64(val), 10)
+	case uint32:
+		return strconv.FormatUint(uint64(val), 10)
+	case uint64:
+		return strconv.FormatUint(val, 10)
+	case time.Time:
+		if c.TimeFormat != "" {
+			return val.Format(c.TimeFormat)
+		}
+		return val.String()
+	case float32:
+		if c.FloatFormat != "" {
+			return fmt.Sprintf(c.FloatFormat, val)
+		}
+		return strconv.FormatFloat(float64(val), 'f', -1, 32)
+	case float64:
+		if c.FloatFormat != "" {
+			return fmt.Sprintf(c.FloatFormat, val)
+		}
+		return strconv.FormatFloat(val, 'f', -1, 64)
+	}
+	if jsonMarshaler, ok := v.(json.Marshaler); ok {
+		if jsonData, err := jsonMarshaler.MarshalJSON(); err == nil {
+			return strings.Trim(string(jsonData), `"`)
+		}
+	}
+	if fmtStringer, ok := v.(fmt.Stringer); ok {
+		return fmtStringer.String()
+	}
+	if jsonData, err := json.Marshal(v); err == nil {
+		return strings.Trim(string(jsonData), `"`)
+	}
+	return fmt.Sprintf("%v", v)
 }
