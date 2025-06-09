@@ -46,28 +46,24 @@ func Write(writer io.Writer, rows *sql.Rows) error {
 // return the processed Row slice as you want it written to the CSV.
 type CsvPreProcessorFunc func(row []string, columnNames []string) (outputRow bool, processedRow []string)
 
-type ByteArrayConverter int
+// BinaryConverter allows you to specify the algorithm for converting binary data into a string.
+type BinaryConverter int
 
 const (
-	// string([]byte)
+	// Convert binary data to string using string([]byte).
 	String = iota
-
 	// Standard base64 encoding, as defined in RFC 4648.
 	StdBase64
-
 	// Alternate base64 encoding defined in RFC 4648.
 	// It is typically used in URLs and file names.
 	URLBase64
-
 	// Standard raw, unpadded base64 encoding, as defined in RFC 4648 section 3.2.
 	// This is the same as [StdBase64] but omits padding characters.
 	RawStdBase64
-
 	// Unpadded alternate base64 encoding defined in RFC 4648.
 	// It is typically used in URLs and file names.
 	// This is the same as [URLBase64] but omits padding characters.
 	RawURLBase64
-
 	// Hexadecimal encoding of src
 	Hex
 )
@@ -76,12 +72,12 @@ const (
 // There are a few settings you can override if you want to do
 // some fancy stuff to your CSV.
 type Converter struct {
-	Headers            []string           // Column headers to use (default is rows.Columns())
-	WriteHeaders       bool               // Flag to output headers in your CSV (default is true)
-	TimeFormat         string             // Format string for any time.Time values (default is time's default)
-	FloatFormat        string             // Format string for any float64 and float32 values (default is %v)
-	Delimiter          rune               // Delimiter to use in your CSV (default is comma)
-	ByteArrayConverter ByteArrayConverter // How to convert []byte. By default string([]byte{})
+	Headers         []string        // Column headers to use (default is rows.Columns())
+	WriteHeaders    bool            // Flag to output headers in your CSV (default is true)
+	TimeFormat      string          // Format string for any time.Time values (default is time's default)
+	FloatFormat     string          // Format string for any float64 and float32 values (default is %v)
+	Delimiter       rune            // Delimiter to use in your CSV (default is comma)
+	BinaryConverter BinaryConverter // How to convert []byte. By default string([]byte{})
 
 	rows            *sql.Rows
 	rowPreProcessor CsvPreProcessorFunc
@@ -209,9 +205,7 @@ func (c Converter) toString(v any) string {
 	case string:
 		return val
 	case []byte:
-		switch c.ByteArrayConverter {
-		case String:
-			return string(val)
+		switch c.BinaryConverter {
 		case StdBase64:
 			return base64.StdEncoding.EncodeToString(val)
 		case URLBase64:
