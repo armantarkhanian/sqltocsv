@@ -52,21 +52,20 @@ const (
 	// string([]byte)
 	String = iota
 
-	// StdEncoding is the standard base64 encoding, as defined in RFC 4648.
+	// Standard base64 encoding, as defined in RFC 4648.
 	StdBase64
 
-	// URLEncoding is the alternate base64 encoding defined in RFC 4648.
+	// Alternate base64 encoding defined in RFC 4648.
 	// It is typically used in URLs and file names.
 	URLBase64
 
-	// RawStdEncoding is the standard raw, unpadded base64 encoding,
-	// as defined in RFC 4648 section 3.2.
-	// This is the same as [StdEncoding] but omits padding characters.
+	// Standard raw, unpadded base64 encoding, as defined in RFC 4648 section 3.2.
+	// This is the same as [StdBase64] but omits padding characters.
 	RawStdBase64
 
-	// RawURLEncoding is the unpadded alternate base64 encoding defined in RFC 4648.
+	// Unpadded alternate base64 encoding defined in RFC 4648.
 	// It is typically used in URLs and file names.
-	// This is the same as [URLEncoding] but omits padding characters.
+	// This is the same as [URLBase64] but omits padding characters.
 	RawURLBase64
 
 	// Hexadecimal encoding of src
