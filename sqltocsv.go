@@ -244,7 +244,7 @@ func (c Converter) toString(v any) string {
 		if c.TimeFormat != "" {
 			return val.Format(c.TimeFormat)
 		}
-		return val.String()
+		return val.Format(time.RFC3339Nano)
 	case float32:
 		if c.FloatFormat != "" {
 			return fmt.Sprintf(c.FloatFormat, val)
