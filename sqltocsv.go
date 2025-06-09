@@ -64,7 +64,7 @@ const (
 	// It is typically used in URLs and file names.
 	// This is the same as [URLBase64] but omits padding characters.
 	RawURLBase64
-	// Hexadecimal encoding of src
+	// Hexadecimal encoding of []byte.
 	Hex
 )
 
